@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+Python/
+bot.pid
+bot_stdout.log
+bot_stderr.log
+data/chat_state.json
+data/ai_history.json
