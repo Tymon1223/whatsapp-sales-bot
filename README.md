@@ -39,8 +39,8 @@ Product Name: LUNA — дизайнерский столик с зеркалом
 Regular Price: 150 000 тг
 Sale Price: 100 000 тг
 Kaspi Installment: есть
-Available Colors: Beige, Grey, Red, Pink, Brown, White
-Main Description: Мягкий bouclé, округлые формы, встроенное зеркало, мягкое сиденье и удобное хранение. LUNA — больше, чем столик: это уютная beauty-зона и премиальный акцент для интерьера.
+Available Colors: Белый, Серый, Красный, Коричневый, Розовый, Бежевый
+Main Description: LUNA — дизайнерский столик с зеркалом. Мягкий bouclé, округлые формы, встроенное зеркало, мягкое сиденье и удобное хранение. Акция: вместо 150 000 тг — 100 000 тг. LUNA — уютная beauty-зона и премиальный акцент для интерьера.
 Delivery Fee: 10 000 тг
 Delivery Time: 2-5 дней
 Photo URL 1: main.jpeg
