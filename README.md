@@ -32,6 +32,21 @@
 Product Name | Regular Price | Sale Price | Kaspi Installment | Available Colors | Dimensions (Size) | Main Description | Delivery Fee | Delivery Time | Photo URL 1 | Photo URL 2 | Video URL | Link
 ```
 
+Ұсынылатын негізгі product row:
+
+```text
+Product Name: LUNA — дизайнерский столик с зеркалом
+Regular Price: 150 000 тг
+Sale Price: 100 000 тг
+Kaspi Installment: есть
+Available Colors: Beige, Grey, Red, Pink, Brown, White
+Main Description: Мягкий bouclé, округлые формы, встроенное зеркало, мягкое сиденье и удобное хранение. LUNA — больше, чем столик: это уютная beauty-зона и премиальный акцент для интерьера.
+Delivery Fee: 10 000 тг
+Delivery Time: 2-5 дней
+Photo URL 1: main.jpeg
+Video URL: main2.MOV
+```
+
 Егер әр түске жеке фото жібергіңіз келсе, ең ыңғайлысы файлдарды папкаға бөлу:
 
 ```text
