@@ -469,23 +469,25 @@ class SalesFlowService:
         if include_greeting:
             return (
                 "Здравствуйте!\n"
-                "Напишите, пожалуйста, что вас интересует: какой товар нужен, цена или фото?"
+                "Подскажите, что вам важнее: цена, фото, цвет или доставка? Я помогу быстро подобрать вариант."
             )
-        return "Напишите, пожалуйста, какой товар вас интересует: цена, фото или цвета?"
+        return "Подскажите, что показать сначала: цену, фото, цвета или доставку?"
 
     def build_offer_message(self, product: Product, language: str) -> str:
-        lines = [f"Вот актуальные фото и видео по модели {product.name} 👇"]
+        lines = [f"Показываю модель {product.name}."]
 
         if product.current_price:
-            lines.append(f"Цена: {product.current_price}")
+            lines.append(f"Сейчас цена {product.current_price}.")
         if product.regular_price and product.regular_price != product.current_price:
-            lines.append(f"По акции вместо {product.regular_price}")
+            lines.append(f"Раньше была {product.regular_price}, сейчас выгоднее оформить по акции.")
         if product.kaspi_installment:
-            lines.append(f"Kaspi рассрочка: {product.kaspi_installment}")
+            lines.append(f"Можно через Kaspi: {product.kaspi_installment}.")
         if product.colors:
-            lines.append(f"Цвета: {product.colors}")
+            lines.append(f"По цветам есть: {product.colors}.")
+        if product.description:
+            lines.append(product.description)
 
-        lines.append("Если понравится, сразу помогу с доставкой и оплатой.")
+        lines.append("Какой цвет хотите посмотреть ближе?")
         return "\n".join(lines)
 
     def build_product_action_buttons(self, language: str) -> list[dict[str, str]]:
@@ -501,11 +503,11 @@ class SalesFlowService:
     def build_order_selection_prompt(self, product: Product | None) -> str:
         if product and product.colors:
             return (
-                f"Напишите одним сообщением нужный цвет и количество.\n"
-                f"Доступные цвета: {product.colors}.\n"
+                "Отлично, оформим.\n"
+                f"Напишите нужный цвет и количество одним сообщением. Доступные цвета: {product.colors}.\n"
                 "Пример: Черный, 2 шт."
             )
-        return "Напишите одним сообщением цвет и количество. Пример: Черный, 2 шт."
+        return "Отлично, оформим. Напишите цвет и количество одним сообщением. Пример: Черный, 2 шт."
 
     def build_order_quantity_prompt(self) -> str:
         return "Сколько штук вам нужно?"
@@ -515,7 +517,8 @@ class SalesFlowService:
 
     def build_order_address_prompt(self) -> str:
         return (
-            "Теперь отправьте данные для заказа одним сообщением:\n"
+            "Приняла, осталось оформить доставку.\n"
+            "Отправьте данные одним сообщением:\n"
             "Имя: ...\n"
             "Телефон: ...\n"
             "Адрес: ..."
@@ -668,17 +671,17 @@ class SalesFlowService:
         return "Хорошо, подключаю менеджера.\nДальше вам ответит человек."
 
     def build_follow_up_ack_message(self) -> str:
-        return "Хорошо, понимаю.\nЕсли будет удобно, я напомню вам чуть позже здесь."
+        return "Хорошо, понимаю.\nНапомню чуть позже, чтобы вы спокойно могли вернуться к выбору."
 
     def build_follow_up_reminder(self, product: Product | None = None) -> str:
         if product:
             return (
-                f"Здравствуйте! Напоминаю по товару {product.name}.\n"
-                "Если актуально, я могу помочь с оформлением или ответить на вопросы."
+                f"Здравствуйте! Напоминаю по {product.name}.\n"
+                "Если еще актуально, могу сразу подсказать по цвету, доставке или оформить заказ."
             )
         return (
             "Здравствуйте! Напоминаю по вашему запросу.\n"
-            "Если актуально, я могу помочь с оформлением или ответить на вопросы."
+            "Если еще актуально, могу подсказать по цене, доставке или оформлению."
         )
 
     def build_waiting_customer_details_message(self, language: str) -> str:
@@ -725,18 +728,18 @@ class SalesFlowService:
         else:
             parts.append("Стоимость доставки по Казахстану: 10 000 тг.")
 
-        parts.append("Если хотите, могу сразу помочь с оформлением заказа.")
+        parts.append("Хотите, я сразу подберу цвет и посчитаю итоговую сумму?")
         return "\n".join(parts)
 
     def build_colors_message(self, product: Product | None) -> str:
         if product and product.colors:
-            return f"Доступные цвета: {product.colors}."
+            return f"Доступные цвета: {product.colors}.\nКакой цвет показать фото?"
         return "По цветам подскажу чуть позже, сейчас уточняю актуальное наличие."
 
     def build_color_selected_message(self, color: str, in_order_flow: bool = False) -> str:
         if in_order_flow:
-            return f"Цвет {color} есть. Теперь напишите количество: 1, 2, 3 или больше 5."
-        return f"Да, цвет {color} есть в наличии."
+            return f"Цвет {color} есть. Сколько штук оформить?"
+        return f"Да, цвет {color} есть в наличии.\nХотите покажу фото именно в этом цвете?"
 
     def match_known_color(self, product: Product | None, text: str) -> str:
         if not product or not product.colors:

@@ -24,15 +24,11 @@ ORDER_STAGES = {
 }
 
 UNIVERSAL_SALES_TEXT = (
-    "Здравствуйте! 🙌\n\n"
-    "Да, LUNA — дизайнерский столик с зеркалом сейчас в наличии 👍\n"
-    "Это не просто мебель, а уютная beauty-зона для спальни или гардеробной 🌙\n\n"
-    "Сейчас действует акция: вместо 150 000 тг — 100 000 тг 🔥\n"
-    "По этой цене осталось совсем немного позиций, следующая поставка уже будет дороже.\n\n"
-    "Цвета коллекции LUNA:\n"
-    "Белый / Серый / Черный / Красный / Коричневый / Розовый / Бирюзовый\n\n"
-    "Мягкий bouclé, округлые формы, встроенное зеркало и мягкое сиденье — выглядит дорого и не занимает много места.\n\n"
-    "Если хотите, я сразу покажу фото, видео и помогу рассчитать доставку 👌"
+    "Здравствуйте! Да, LUNA сейчас в наличии.\n\n"
+    "Это туалетный столик с зеркалом для аккуратной beauty-зоны: мягкая обивка, округлые формы, сиденье и место для хранения.\n\n"
+    "Сейчас цена 100 000 тг вместо 150 000 тг.\n"
+    "Цвета: белый, серый, черный, красный, коричневый, розовый, бирюзовый.\n\n"
+    "Какой цвет вам ближе? Могу сразу показать фото в нужном оттенке."
 )
 
 
@@ -58,11 +54,12 @@ def _handle_universal_template(runtime: BotRuntime, notification: Any, incoming_
             _try_send_media(runtime, notification, primary_video, None)
         runtime.sales_flow.remember_product(notification.chat, product)
         runtime.sales_flow.mark_intro_sent(notification.chat, True)
-        _send_product_actions(runtime, notification)
 
     if not media_sent:
         notification.answer(UNIVERSAL_SALES_TEXT)
         runtime.sales_flow.mark_discovering(notification.chat)
+    if product:
+        _send_product_actions(runtime, notification)
 
     runtime.ai_service.record_assistant_message(notification.chat, UNIVERSAL_SALES_TEXT)
     logger.info("Universal sales template sent to %s", notification.chat)

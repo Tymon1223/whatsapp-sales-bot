@@ -156,6 +156,7 @@ def _install_mock_catalog() -> None:
     runtime.catalog_service.find_product_by_name = (
         lambda name: sample_product if name == sample_product.name else None
     )
+    runtime.catalog_service.get_default_product = lambda: sample_product
     runtime.catalog_service.get_catalog_text = (
         lambda query: "Catalog status: available.\n- Тедди матадан туалетный столик | price: 100 000 тг"
     )
