@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from app.ai_service import RouterDecision
 from app.catalog_service import Product
 from app.handlers import (
     handle_clear,
@@ -163,6 +164,50 @@ def _install_mock_catalog() -> None:
 
 
 def _install_mock_ai() -> None:
+    def route_message(
+        chat_id: str,
+        user_name: str,
+        message_text: str,
+        state_context: str,
+        catalog_text: str,
+    ) -> RouterDecision:
+        normalized = message_text.lower()
+        if any(word in normalized for word in ("оформ", "заказ", "беру", "куп", "payment")):
+            return RouterDecision(
+                action="ask_color",
+                reply_text="Отлично, оформим. Напишите цвет и количество одним сообщением.",
+                product_name="Тедди матадан туалетный столик",
+            )
+        if any(color in normalized for color in ("черный", "ақ", "белый", "қара")) and any(char.isdigit() for char in normalized):
+            return RouterDecision(
+                action="ask_order_details",
+                reply_text="Приняла. Отправьте имя, телефон и адрес одним сообщением.",
+                product_name="Тедди матадан туалетный столик",
+                color="черный" if "черн" in normalized else "",
+                quantity="1",
+            )
+        if "имя:" in normalized and "тел" in normalized and "адрес:" in normalized:
+            return RouterDecision(
+                action="show_payment_methods",
+                reply_text="Данные получила.",
+                product_name="Тедди матадан туалетный столик",
+                customer_full_name="Иван Иванов",
+                customer_phone="87071234567",
+                delivery_address="Алматы Абая 1",
+            )
+        if "оплат" in normalized or "qr" in normalized or "kaspi" in normalized:
+            return RouterDecision(
+                action="show_payment_details",
+                reply_text="Ниже отправляю Kaspi QR для оплаты.",
+                product_name="Тедди матадан туалетный столик",
+                payment_method="kaspi_qr",
+            )
+        return RouterDecision(
+            action="ask_color",
+            reply_text="Отлично, оформим. Напишите цвет и количество одним сообщением.",
+            product_name="Тедди матадан туалетный столик",
+        )
+
     def generate_reply(
         chat_id: str,
         user_name: str,
@@ -179,6 +224,7 @@ def _install_mock_ai() -> None:
         return f"{user_name}, сұрағыңызды алдым. Нақты тауар атауын жазыңыз, мен бағасын айтамын."
 
     runtime.ai_service.generate_reply = generate_reply
+    runtime.ai_service.route_message = route_message
 
 
 def _install_mock_payment_logger() -> None:

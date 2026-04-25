@@ -196,16 +196,6 @@ class SalesFlowService:
         state.stage = "awaiting_receipt"
         self._save_state_store()
 
-    def mark_waiting_remote_kaspi_phone(self, chat_id: str, payment_method: str = "udalenka") -> None:
-        state = self.get_state(chat_id)
-        state.payment_method = payment_method
-        state.stage = "awaiting_remote_kaspi_phone"
-        self._save_state_store()
-
-    def mark_waiting_remote_status(self, chat_id: str) -> None:
-        self.get_state(chat_id).stage = "awaiting_remote_status"
-        self._save_state_store()
-
     def mark_receipt_logged(self, chat_id: str) -> None:
         state = self.get_state(chat_id)
         state.stage = "receipt_logged"
@@ -490,13 +480,6 @@ class SalesFlowService:
         lines.append("Какой цвет хотите посмотреть ближе?")
         return "\n".join(lines)
 
-    def build_product_action_buttons(self, language: str) -> list[dict[str, str]]:
-        return [
-            {"buttonId": "product_more_photos", "buttonText": "Еще фото"},
-            {"buttonId": "product_payment", "buttonText": "Оформить заказ"},
-            {"buttonId": "product_manager", "buttonText": "Менеджер"},
-        ]
-
     def build_order_color_prompt(self, product: Product | None) -> str:
         return self.build_order_selection_prompt(product)
 
@@ -543,19 +526,9 @@ class SalesFlowService:
             lines.append(f"Сумма к оплате: {total_price}.")
         return "\n".join(lines)
 
-    def build_payment_buttons(self, language: str) -> list[dict[str, str]]:
-        return [
-            {"buttonId": "payment_kaspi_qr", "buttonText": "Kaspi QR"},
-            {"buttonId": "payment_udalenka", "buttonText": "Удаленка"},
-        ]
-
     def is_kaspi_selection(self, text: str) -> bool:
         normalized = text.strip().lower()
         return normalized in {"kaspi qr", "kaspi", "payment_kaspi_qr", "payment_kaspi"}
-
-    def is_remote_selection(self, text: str) -> bool:
-        normalized = text.strip().lower()
-        return normalized in {"удаленка", "payment_udalenka"}
 
     def build_kaspi_details_message(
         self,
@@ -571,53 +544,6 @@ class SalesFlowService:
             lines.append(f"Сумма: {total_price}.")
         lines.append("После оплаты отправьте, пожалуйста, чек для подтверждения оплаты.")
         return "\n".join(lines)
-
-    def build_remote_kaspi_prompt(self, product: Product | None, state: ChatState) -> str:
-        lines = [self.build_order_summary(state, product), ""]
-        lines.append("Для удаленной оплаты отправьте номер Kaspi, на который нужно выставить счет.")
-        lines.append("Формат: 8707XXXXXXX")
-        return "\n".join(lines)
-
-    def build_remote_kaspi_waiting_message(
-        self,
-        product: Product | None,
-        state: ChatState,
-    ) -> str:
-        lines = [self.build_order_summary(state, product), ""]
-        if state.remote_kaspi_phone:
-            lines.append(f"Счет на удаленную оплату будет отправлен на номер Kaspi: {state.remote_kaspi_phone}.")
-        else:
-            lines.append("Счет на удаленную оплату будет отправлен на ваш номер Kaspi.")
-        lines.append("После получения счета выберите один из вариантов ниже.")
-        return "\n".join(lines)
-
-    def build_remote_status_buttons(self) -> list[dict[str, str]]:
-        return [
-            {"buttonId": "remote_paid", "buttonText": "Оплатил"},
-            {"buttonId": "remote_declined", "buttonText": "Отказ"},
-        ]
-
-    def save_remote_kaspi_phone(self, chat_id: str, phone: str) -> None:
-        self.get_state(chat_id).remote_kaspi_phone = phone.strip()
-        self._save_state_store()
-
-    def parse_kaspi_phone(self, text: str) -> str:
-        digits = re.sub(r"\D", "", text or "")
-        if len(digits) == 11 and digits.startswith("87"):
-            return digits
-        if len(digits) == 11 and digits.startswith("77"):
-            return "8" + digits[1:]
-        if len(digits) == 12 and digits.startswith("7"):
-            return "8" + digits[1:]
-        return ""
-
-    def is_remote_paid_selection(self, text: str) -> bool:
-        normalized = text.strip().lower()
-        return normalized in {"remote_paid", "оплатил", "төледім", "тoledim"}
-
-    def is_remote_declined_selection(self, text: str) -> bool:
-        normalized = text.strip().lower()
-        return normalized in {"remote_declined", "отказ", "бас тарту"}
 
     def calculate_total_price(self, product: Product | None, quantity_text: str) -> str:
         if not product:
@@ -769,17 +695,6 @@ class SalesFlowService:
             state.delivery_address = address
         self._save_state_store()
 
-    def set_color_page(self, chat_id: str, page: int) -> None:
-        self.get_state(chat_id).color_page = max(page, 0)
-        self._save_state_store()
-
-    def get_color_page(self, chat_id: str) -> int:
-        return self.get_state(chat_id).color_page
-
-    def is_more_colors_request(self, text: str) -> bool:
-        normalized = text.strip().lower()
-        return normalized in {"еще цвета", "color_more"}
-
     def _normalize_color_token(self, value: str) -> str:
         token = value.strip().lower()
         replacements = {
@@ -792,32 +707,6 @@ class SalesFlowService:
         for old, new in replacements.items():
             token = token.replace(old, new)
         return token
-
-    def build_color_buttons(self, product: Product, page: int = 0) -> list[dict[str, str]]:
-        colors = [item.strip() for item in (product.colors or "").split(",") if item.strip()]
-        if not colors:
-            return []
-
-        if len(colors) <= 3:
-            return [
-                {"buttonId": f"color_{self._normalize_color_token(color)}", "buttonText": color}
-                for color in colors
-            ]
-
-        if page <= 0:
-            visible = colors[:2]
-            buttons = [
-                {"buttonId": f"color_{self._normalize_color_token(color)}", "buttonText": color}
-                for color in visible
-            ]
-            buttons.append({"buttonId": "color_more", "buttonText": "Еще цвета"})
-            return buttons
-
-        visible = colors[2:5]
-        return [
-            {"buttonId": f"color_{self._normalize_color_token(color)}", "buttonText": color}
-            for color in visible
-        ]
 
     def save_order_quantity(self, chat_id: str, quantity: str) -> None:
         self.get_state(chat_id).order_quantity = quantity.strip()

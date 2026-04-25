@@ -180,7 +180,7 @@ class OpenAIService:
             '  "customer_full_name": "customer name if provided",\n'
             '  "customer_phone": "customer phone if provided",\n'
             '  "delivery_address": "customer address if provided",\n'
-            '  "payment_method": "kaspi_qr|udalenka|",\n'
+            '  "payment_method": "kaspi_qr|",\n'
             '  "reminder_text": "one short Russian follow-up reminder if action=schedule_followup",\n'
             '  "follow_up_delay_minutes": 180\n'
             "}\n\n"
@@ -199,7 +199,9 @@ class OpenAIService:
             "- If color and quantity are already known and customer details are missing, use action=ask_order_details.\n"
             "- If the chat is awaiting_order_address and the customer sends full name, phone, and address, use action=show_payment_methods.\n"
             "- If customer provides name, phone, and address, use action=show_payment_methods and fill those fields.\n"
-            "- If customer chooses Kaspi QR or Удаленка, use action=show_payment_details and set payment_method.\n"
+            "- action=show_payment_methods means the bot will send Kaspi QR payment details directly. Do not offer payment choices.\n"
+            "- If customer asks to pay, says Kaspi, QR, оплатить, or реквизиты, use action=show_payment_details and set payment_method=kaspi_qr.\n"
+            "- Never mention or offer unsupported payment options, remote payment, other bank, or payment method buttons.\n"
             "- If the customer asks a side question during an order, use action=reply and do not restart the order.\n"
             "- Never send ask_color again if both color and quantity are already chosen.\n"
             "- Never send ask_quantity again if quantity is already chosen.\n"

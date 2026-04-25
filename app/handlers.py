@@ -24,10 +24,12 @@ ORDER_STAGES = {
 }
 
 UNIVERSAL_SALES_TEXT = (
-    "Здравствуйте! Да, LUNA сейчас в наличии.\n\n"
-    "Это туалетный столик с зеркалом для аккуратной beauty-зоны: мягкая обивка, округлые формы, сиденье и место для хранения.\n\n"
-    "Сейчас цена 100 000 тг вместо 150 000 тг.\n"
-    "Цвета: белый, серый, черный, красный, коричневый, розовый, бирюзовый.\n\n"
+    "Здравствуйте! LUNA есть в наличии ✅\n\n"
+    "Без подсветки: 100 000 тг 🔥\n"
+    "С подсветкой: 150 000 тг.\n\n"
+    "Это готовая beauty-зона: зеркало, мягкое сиденье, хранение и аккуратный премиальный вид ✨\n"
+    "Доставка есть по всему Казахстану 🚚\n\n"
+    "Цвета: белый, серый, черный, красный, коричневый, розовый, бирюзовый 🎨\n\n"
     "Какой цвет вам ближе? Могу сразу показать фото в нужном оттенке."
 )
 
@@ -58,9 +60,6 @@ def _handle_universal_template(runtime: BotRuntime, notification: Any, incoming_
     if not media_sent:
         notification.answer(UNIVERSAL_SALES_TEXT)
         runtime.sales_flow.mark_discovering(notification.chat)
-    if product:
-        _send_product_actions(runtime, notification)
-
     runtime.ai_service.record_assistant_message(notification.chat, UNIVERSAL_SALES_TEXT)
     logger.info("Universal sales template sent to %s", notification.chat)
     return True
@@ -169,57 +168,31 @@ def _resolve_kaspi_qr_path(runtime: BotRuntime) -> str | None:
     return None
 
 
-def _send_product_actions(runtime: BotRuntime, notification: Any) -> None:
-    notification.answer_with_interactive_buttons_reply(
-        body="Если нужно, выберите действие ниже.",
-        buttons=runtime.sales_flow.build_product_action_buttons("ru"),
-    )
-
-
-def _send_list_message(
+def _send_kaspi_qr_payment_details(
+    runtime: BotRuntime,
     notification: Any,
-    message: str,
-    button_text: str,
-    rows: list[dict[str, str]],
-    title: str | None = None,
-    footer: str | None = None,
-) -> None:
-    notification.api.sending.sendListMessage(
-        notification.chat,
-        message,
-        button_text,
-        sections=[{"title": title or "Варианты", "rows": rows}],
-        title=title,
-        footer=footer,
-    )
+    product: Any,
+    body_prefix: str = "",
+) -> str:
+    state = runtime.sales_flow.get_state(notification.chat)
+    text = runtime.sales_flow.build_kaspi_details_message(product, state, "ru")
+    if body_prefix.strip():
+        text = f"{body_prefix.strip()}\n\n{text}"
 
+    local_qr_ref = _resolve_kaspi_qr_path(runtime)
+    if local_qr_ref:
+        _try_send_media(runtime, notification, local_qr_ref, text)
+    elif runtime.settings.payment_kaspi_qr_url:
+        _try_send_media(runtime, notification, runtime.settings.payment_kaspi_qr_url, text)
+    else:
+        payment_details = runtime.catalog_service.get_payment_details()
+        if payment_details.kaspi_qr_url:
+            _try_send_media(runtime, notification, payment_details.kaspi_qr_url, text)
+        else:
+            notification.answer(text)
 
-def _send_order_color_list(runtime: BotRuntime, notification: Any, product: Any, body: str | None = None) -> None:
-    buttons = runtime.sales_flow.build_color_buttons(product, runtime.sales_flow.get_color_page(notification.chat))
-    if not buttons:
-        notification.answer(body or runtime.sales_flow.build_order_color_prompt(product))
-        return
-
-    notification.answer_with_interactive_buttons_reply(
-        body=body or runtime.sales_flow.build_order_color_prompt(product),
-        buttons=buttons,
-    )
-
-
-def _send_order_quantity_list(runtime: BotRuntime, notification: Any, body: str | None = None) -> None:
-    rows = [
-        {"title": "1", "rowId": "1", "description": "1 штука"},
-        {"title": "2", "rowId": "2", "description": "2 штуки"},
-        {"title": "3", "rowId": "3", "description": "3 штуки"},
-        {"title": "Больше 5", "rowId": "Больше 5", "description": "Указать точное количество"},
-    ]
-    _send_list_message(
-        notification,
-        body or runtime.sales_flow.build_order_quantity_prompt(),
-        "Выбрать количество",
-        rows,
-        title="Количество",
-    )
+    runtime.sales_flow.mark_payment_method(notification.chat, "kaspi_qr")
+    return text
 
 
 def _finalize_receipt_if_ready(
@@ -249,31 +222,6 @@ def _finalize_receipt_if_ready(
     )
     runtime.sales_flow.mark_receipt_logged(chat_id)
     return True
-
-
-def _finalize_remote_status(
-    runtime: BotRuntime,
-    chat_id: str,
-    whatsapp_name: str,
-    status: str,
-) -> None:
-    state = runtime.sales_flow.get_state(chat_id)
-    product = runtime.catalog_service.find_product_by_name(state.selected_product_name)
-    runtime.payment_logger.log_client_status(
-        chat_id=chat_id,
-        whatsapp_name=whatsapp_name,
-        customer_full_name=state.customer_full_name,
-        customer_phone=state.customer_phone,
-        delivery_address=state.delivery_address,
-        order_color=state.order_color,
-        order_quantity=state.order_quantity,
-        product=product,
-        payment_method=state.payment_method or "udalenka",
-        status=status,
-        receipt_info={},
-        remote_kaspi_phone=state.remote_kaspi_phone,
-    )
-    runtime.sales_flow.mark_receipt_logged(chat_id)
 
 
 def _build_selected_product_catalog_text(runtime: BotRuntime, chat_id: str, incoming_text: str) -> str:
@@ -383,7 +331,6 @@ def _handle_product_offer(runtime: BotRuntime, notification: Any, incoming_text:
     if primary_video:
         _try_send_media(runtime, notification, primary_video, None)
     notification.answer(runtime.sales_flow.build_offer_message(product, language))
-    _send_product_actions(runtime, notification)
 
     runtime.sales_flow.remember_product(notification.chat, product)
     logger.info("Product offer sent to %s for %s", notification.chat, product.name)
@@ -407,7 +354,6 @@ def _handle_discovery_showcase(runtime: BotRuntime, notification: Any, incoming_
     if primary_video:
         _try_send_media(runtime, notification, primary_video, None)
     notification.answer(runtime.sales_flow.build_offer_message(product, language))
-    _send_product_actions(runtime, notification)
 
     runtime.sales_flow.remember_product(notification.chat, product)
     logger.info("Discovery showcase sent to %s for %s", notification.chat, product.name)
@@ -433,7 +379,7 @@ def _handle_order_request(runtime: BotRuntime, notification: Any, incoming_text:
     if not product:
         return False
 
-    _send_order_color_list(runtime, notification, product)
+    notification.answer(runtime.sales_flow.build_order_selection_prompt(product))
     runtime.sales_flow.mark_waiting_order_color(notification.chat, product)
     logger.info("Order color requested from %s for %s", notification.chat, product.name)
     return True
@@ -472,14 +418,8 @@ def _handle_order_details_submission(runtime: BotRuntime, notification: Any, inc
             return False
         runtime.sales_flow.save_customer_details(notification.chat, full_name, phone, address)
         runtime.sales_flow.save_order_details(notification.chat, "", address)
-        runtime.sales_flow.mark_waiting_payment_method(notification.chat, product)
-        notification.answer_with_interactive_buttons_reply(
-            body=(
-                f"{runtime.sales_flow.build_order_summary(runtime.sales_flow.get_state(notification.chat), product)}\n"
-                "Выберите способ оплаты:"
-            ),
-            buttons=runtime.sales_flow.build_payment_buttons("ru"),
-        )
+        text = _send_kaspi_qr_payment_details(runtime, notification, product)
+        runtime.ai_service.record_assistant_message(notification.chat, text)
         logger.info("Full order details captured for %s", notification.chat)
         return True
 
@@ -599,36 +539,29 @@ def _handle_product_action(runtime: BotRuntime, notification: Any, incoming_text
     if runtime.sales_flow.is_more_photos_request(incoming_text):
         next_image, exhausted = runtime.sales_flow.get_next_image(notification.chat, product)
         if not next_image:
-            notification.answer("Дополнительные фото закончились. Можете выбрать Видео, Оплата или Менеджер.")
-            _send_product_actions(runtime, notification)
+            notification.answer("Дополнительные фото закончились. Могу помочь с видео, заказом или оплатой.")
             return True
 
         if not _try_send_media(runtime, notification, next_image, None):
-            notification.answer("Дополнительное фото пока недоступно. Можете выбрать Оплата или Менеджер.")
-            _send_product_actions(runtime, notification)
+            notification.answer("Дополнительное фото пока недоступно. Могу помочь с заказом или оплатой.")
             return True
         if exhausted:
-            notification.answer("Это было последнее фото. Можете выбрать Видео, Оплата или Менеджер.")
-        else:
-            _send_product_actions(runtime, notification)
+            notification.answer("Это было последнее фото. Могу помочь с видео, заказом или оплатой.")
         return True
 
     if runtime.sales_flow.is_video_request(incoming_text):
         video_ref, already_sent = runtime.sales_flow.get_video(notification.chat, product)
         if not video_ref:
-            notification.answer("По этому товару видео пока нет. Можете выбрать Еще фото, Оплата или Менеджер.")
-            _send_product_actions(runtime, notification)
+            notification.answer("По этому товару видео пока нет. Могу отправить еще фото или помочь оформить заказ.")
             return True
 
         if not _try_send_media(runtime, notification, video_ref, None):
-            notification.answer("Видео пока недоступно. Можете выбрать Оплата или Менеджер.")
-            _send_product_actions(runtime, notification)
+            notification.answer("Видео пока недоступно. Могу помочь с заказом или оплатой.")
             return True
         if already_sent:
-            notification.answer("Видео отправил повторно. Если хотите, выберите оплату.")
+            notification.answer("Видео отправил повторно. Если хотите оформить, напишите цвет и количество.")
         else:
-            notification.answer("Видео отправил. Если хотите, выберите оплату.")
-        _send_product_actions(runtime, notification)
+            notification.answer("Видео отправил. Если хотите оформить, напишите цвет и количество.")
         return True
 
     if runtime.sales_flow.is_buy_now_request(incoming_text):
@@ -675,45 +608,11 @@ def _handle_payment_method_selection(
     if state.stage != "awaiting_payment_method":
         return False
 
-    language = runtime.sales_flow.remember_language(notification.chat, incoming_text)
     product = runtime.catalog_service.find_product_by_name(state.selected_product_name)
-    payment_details = runtime.catalog_service.get_payment_details()
-    if runtime.sales_flow.is_kaspi_selection(incoming_text):
-        notification.answer(
-            runtime.sales_flow.build_kaspi_details_message(product, state, language, payment_details)
-        )
-        if runtime.settings.payment_kaspi_qr_file:
-            local_qr = _resolve_local_media_path(runtime, runtime.settings.payment_kaspi_qr_file)
-            if local_qr:
-                _try_send_media(runtime, notification, str(local_qr), "Kaspi QR")
-            elif payment_details.kaspi_qr_url or runtime.settings.payment_kaspi_qr_url:
-                _try_send_media(
-                    runtime,
-                    notification,
-                    payment_details.kaspi_qr_url or runtime.settings.payment_kaspi_qr_url,
-                    "Kaspi QR",
-                )
-        elif payment_details.kaspi_qr_url or runtime.settings.payment_kaspi_qr_url:
-            _try_send_media(
-                runtime,
-                notification,
-                payment_details.kaspi_qr_url or runtime.settings.payment_kaspi_qr_url,
-                "Kaspi QR",
-            )
-
-        runtime.sales_flow.mark_payment_method(notification.chat, "kaspi")
-        logger.info("Kaspi payment details sent to %s", notification.chat)
-        return True
-
-    if runtime.sales_flow.is_other_bank_selection(incoming_text):
-        notification.answer(
-            runtime.sales_flow.build_other_bank_details_message(product, state, language, payment_details)
-        )
-        runtime.sales_flow.mark_payment_method(notification.chat, "other_bank")
-        logger.info("Other bank payment details sent to %s", notification.chat)
-        return True
-
-    return False
+    text = _send_kaspi_qr_payment_details(runtime, notification, product)
+    runtime.ai_service.record_assistant_message(notification.chat, text)
+    logger.info("Kaspi QR payment details sent from legacy payment stage to %s", notification.chat)
+    return True
 
 
 def _handle_customer_details_submission(
@@ -760,7 +659,6 @@ def _build_ai_state_context(runtime: BotRuntime, chat_id: str) -> str:
             f"- customer_full_name: {state.customer_full_name or 'none'}",
             f"- customer_phone: {state.customer_phone or 'none'}",
             f"- delivery_address: {state.delivery_address or 'none'}",
-            f"- remote_kaspi_phone: {state.remote_kaspi_phone or 'none'}",
             f"- payment_method: {state.payment_method or 'none'}",
             f"- follow_up_scheduled: {runtime.sales_flow.has_follow_up(chat_id)}",
             f"- follow_up_due_at: {runtime.sales_flow.get_follow_up_due_text(chat_id)}",
@@ -855,7 +753,6 @@ def _execute_router_decision(
         offer_text = decision.reply_text or runtime.sales_flow.build_offer_message(product, "ru")
         if not media_sent:
             notification.answer(offer_text)
-        _send_product_actions(runtime, notification)
         runtime.sales_flow.remember_product(chat_id, product)
         _record_assistant_action(runtime, chat_id, decision, offer_text)
         logger.info("AI router sent showcase to %s for %s", chat_id, product.name)
@@ -931,18 +828,10 @@ def _execute_router_decision(
             return
 
         runtime.sales_flow.save_customer_details(chat_id, full_name, phone, address)
-        runtime.sales_flow.mark_waiting_payment_method(chat_id, product)
-        summary = runtime.sales_flow.build_order_summary(runtime.sales_flow.get_state(chat_id), product)
-        if decision.reply_text:
-            body = f"{decision.reply_text}\n\n{summary}\nВыберите способ оплаты:"
-        else:
-            body = f"{summary}\nВыберите способ оплаты:"
-        notification.answer_with_interactive_buttons_reply(
-            body=body,
-            buttons=runtime.sales_flow.build_payment_buttons("ru"),
-        )
-        _record_assistant_action(runtime, chat_id, decision, body)
-        logger.info("AI router requested payment method from %s", chat_id)
+        body_prefix = decision.reply_text or "Данные получила. Ниже отправляю Kaspi QR для оплаты."
+        text = _send_kaspi_qr_payment_details(runtime, notification, product, body_prefix)
+        _record_assistant_action(runtime, chat_id, decision, text)
+        logger.info("AI router sent Kaspi QR after customer details for %s", chat_id)
         return
 
     if decision.action == "show_payment_details":
@@ -951,48 +840,9 @@ def _execute_router_decision(
             _record_assistant_action(runtime, chat_id, decision, fallback_reply)
             return
 
-        payment_method = (decision.payment_method or "").strip().lower()
-        if not payment_method:
-            if runtime.sales_flow.is_kaspi_selection(incoming_text):
-                payment_method = "kaspi_qr"
-            elif runtime.sales_flow.is_remote_selection(incoming_text):
-                payment_method = "udalenka"
-
-        if payment_method == "kaspi_qr":
-            text = runtime.sales_flow.build_kaspi_details_message(product, state, "ru")
-            local_qr_ref = _resolve_kaspi_qr_path(runtime)
-            if local_qr_ref:
-                _try_send_media(runtime, notification, local_qr_ref, text)
-            elif runtime.settings.payment_kaspi_qr_url:
-                _try_send_media(
-                    runtime,
-                    notification,
-                    runtime.settings.payment_kaspi_qr_url,
-                    text,
-                )
-            else:
-                notification.answer(text)
-            runtime.sales_flow.mark_payment_method(chat_id, "kaspi_qr")
-            _record_assistant_action(runtime, chat_id, decision, text)
-            logger.info("AI router sent Kaspi QR payment details to %s", chat_id)
-            return
-
-        if payment_method == "udalenka":
-            runtime.sales_flow.mark_waiting_remote_kaspi_phone(chat_id, "udalenka")
-            text = runtime.sales_flow.build_remote_kaspi_prompt(product, runtime.sales_flow.get_state(chat_id))
-            notification.answer(text)
-            _record_assistant_action(runtime, chat_id, decision, text)
-            logger.info("AI router requested remote Kaspi phone from %s", chat_id)
-            return
-
-        if payment_method == "kaspi":
-            reminder_text = "Выберите, пожалуйста, Kaspi QR или Удаленка."
-            notification.answer(reminder_text)
-            _record_assistant_action(runtime, chat_id, decision, reminder_text)
-            return
-
-        notification.answer(decision.reply_text or "Выберите, пожалуйста, Kaspi QR или Удаленка.")
-        _record_assistant_action(runtime, chat_id, decision, decision.reply_text or "Выберите, пожалуйста, Kaspi QR или Удаленка.")
+        text = _send_kaspi_qr_payment_details(runtime, notification, product, decision.reply_text)
+        _record_assistant_action(runtime, chat_id, decision, text)
+        logger.info("AI router sent Kaspi QR payment details to %s", chat_id)
         return
 
     if decision.action == "send_more_photos":
@@ -1011,7 +861,6 @@ def _execute_router_decision(
         _try_send_media(runtime, notification, next_image, None)
         text = decision.reply_text or ("Это было последнее фото." if exhausted else "Отправил еще фото.")
         notification.answer(text)
-        _send_product_actions(runtime, notification)
         _record_assistant_action(runtime, chat_id, decision, text)
         logger.info("AI router sent more photos to %s", chat_id)
         return
@@ -1071,7 +920,6 @@ def _execute_router_decision(
         _try_send_media(runtime, notification, video_ref, None)
         text = decision.reply_text or ("Видео отправил повторно." if already_sent else "Видео отправил.")
         notification.answer(text)
-        _send_product_actions(runtime, notification)
         _record_assistant_action(runtime, chat_id, decision, text)
         logger.info("AI router sent video to %s", chat_id)
         return
@@ -1122,52 +970,27 @@ def handle_text_notification(runtime: BotRuntime, notification: Any) -> None:
 
         state = runtime.sales_flow.get_state(chat_id)
         if state.stage == "awaiting_remote_kaspi_phone":
-            kaspi_phone = runtime.sales_flow.parse_kaspi_phone(incoming_text)
-            if not kaspi_phone:
-                notification.answer("Отправьте, пожалуйста, номер Kaspi в формате 8707XXXXXXX.")
-                return
-
-            runtime.sales_flow.save_remote_kaspi_phone(chat_id, kaspi_phone)
-            runtime.sales_flow.mark_waiting_remote_status(chat_id)
             product = runtime.catalog_service.find_product_by_name(state.selected_product_name)
-            body = runtime.sales_flow.build_remote_kaspi_waiting_message(
+            text = _send_kaspi_qr_payment_details(
+                runtime,
+                notification,
                 product,
-                runtime.sales_flow.get_state(chat_id),
+                "Сейчас оплата идет только через Kaspi QR. Ниже отправляю QR для оплаты.",
             )
-            notification.answer_with_interactive_buttons_reply(
-                body=body,
-                buttons=runtime.sales_flow.build_remote_status_buttons(),
-            )
-            runtime.ai_service.record_assistant_message(chat_id, body)
-            logger.info("Remote Kaspi phone captured for %s", chat_id)
+            runtime.ai_service.record_assistant_message(chat_id, text)
+            logger.info("Legacy remote payment stage redirected to Kaspi QR for %s", chat_id)
             return
 
         if state.stage == "awaiting_remote_status":
-            if runtime.sales_flow.is_remote_paid_selection(incoming_text):
-                confirmation_text = (
-                    "Спасибо! Отметили, что вы оплатили.\n"
-                    "Сейчас проверяем поступление оплаты, и менеджер свяжется с вами в ближайшее время."
-                )
-                try:
-                    _finalize_remote_status(runtime, chat_id, sender_name, "paid")
-                except Exception:
-                    logger.exception("Failed to save remote paid status for %s", chat_id)
-                notification.answer(confirmation_text)
-                runtime.ai_service.record_assistant_message(chat_id, confirmation_text)
-                logger.info("Remote payment marked paid for %s", chat_id)
-                return
-            if runtime.sales_flow.is_remote_declined_selection(incoming_text):
-                decline_text = "Хорошо, отметили отказ. Если передумаете, мы всегда на связи."
-                try:
-                    _finalize_remote_status(runtime, chat_id, sender_name, "declined")
-                except Exception:
-                    logger.exception("Failed to save remote declined status for %s", chat_id)
-                notification.answer(decline_text)
-                runtime.ai_service.record_assistant_message(chat_id, decline_text)
-                logger.info("Remote payment marked declined for %s", chat_id)
-                return
-
-            notification.answer("Пожалуйста, выберите один из вариантов: Оплатил или Отказ.")
+            product = runtime.catalog_service.find_product_by_name(state.selected_product_name)
+            text = _send_kaspi_qr_payment_details(
+                runtime,
+                notification,
+                product,
+                "Теперь оплата только через Kaspi QR. Ниже отправляю QR для оплаты.",
+            )
+            runtime.ai_service.record_assistant_message(chat_id, text)
+            logger.info("Legacy remote status stage redirected to Kaspi QR for %s", chat_id)
             return
 
         if _handle_universal_template(runtime, notification, incoming_text):
