@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -122,12 +123,108 @@ def _build_public_media_url(runtime: BotRuntime, ref: str) -> str:
     return f"{runtime.settings.media_public_base_url}/{quote(normalized, safe='/')}"
 
 
+_uploaded_file_cache: dict[str, str] = {}
+_last_media_send_time: float = 0.0
+_MEDIA_SEND_DELAY: float = 1.5
+
+
+def _rate_limit_media_send() -> None:
+    """Enforce minimum delay between consecutive GreenAPI media sends to avoid 429."""
+    global _last_media_send_time
+    now = time.monotonic()
+    elapsed = now - _last_media_send_time
+    if elapsed < _MEDIA_SEND_DELAY:
+        time.sleep(_MEDIA_SEND_DELAY - elapsed)
+    _last_media_send_time = time.monotonic()
+
+
+def _upload_file_to_greenapi(notification: Any, local_path: Path) -> str:
+    """Upload a local file via GreenAPI uploadFile and return the cloud URL.
+
+    Uses a module-level cache so the same file is only uploaded once per bot
+    lifetime.  Falls back to sendFileByUpload when the upload API is not
+    available.
+    """
+    cache_key = str(local_path.resolve())
+    if cache_key in _uploaded_file_cache:
+        logger.info("Using cached upload URL for %s", local_path.name)
+        return _uploaded_file_cache[cache_key]
+
+    try:
+        response = notification.api.sending.uploadFile(str(local_path))
+        url = ""
+
+        # Handle SDK response object (has .code and .data attributes)
+        if hasattr(response, "data") and isinstance(response.data, dict):
+            url = response.data.get("urlFile", "") or response.data.get("url", "")
+        # Handle raw dict response
+        elif isinstance(response, dict):
+            url = response.get("urlFile", "") or response.get("url", "")
+
+        if url:
+            _uploaded_file_cache[cache_key] = url
+            logger.info(
+                "Uploaded %s to GreenAPI cloud: %s",
+                local_path.name,
+                url,
+            )
+            return url
+        else:
+            logger.warning(
+                "uploadFile returned no URL for %s, response: %s",
+                local_path.name,
+                response,
+            )
+    except Exception:
+        logger.warning(
+            "uploadFile failed for %s, will try sendFileByUpload",
+            local_path.name,
+            exc_info=True,
+        )
+
+    return ""
+
+
+def _send_media_with_retry(
+    runtime: BotRuntime,
+    notification: Any,
+    ref: str,
+    caption: str | None = None,
+    max_retries: int = 2,
+) -> None:
+    """Send media with retry + exponential backoff on API errors."""
+    last_error: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            _send_media(runtime, notification, ref, caption)
+            return
+        except FileNotFoundError:
+            raise
+        except Exception as exc:
+            last_error = exc
+            wait = 2 ** attempt
+            logger.warning(
+                "Media send attempt %s/%s failed for %s: %s – retrying in %ss",
+                attempt + 1,
+                max_retries + 1,
+                ref,
+                exc,
+                wait,
+            )
+            time.sleep(wait)
+
+    if last_error:
+        raise last_error
+
+
 def _send_media(
     runtime: BotRuntime,
     notification: Any,
     ref: str,
     caption: str | None = None,
 ) -> None:
+    _rate_limit_media_send()
+
     if ref.startswith(("http://", "https://")):
         file_name = runtime.sales_flow.build_remote_file_name(ref)
         logger.info(
@@ -176,6 +273,26 @@ def _send_media(
         local_path.stat().st_size,
         len(caption or ""),
     )
+
+    # Strategy: upload to GreenAPI cloud first, then send by URL.
+    # This is more reliable than sendFileByUpload (answer_with_file)
+    # which fails with 500 on Railway for larger files.
+    cloud_url = _upload_file_to_greenapi(notification, local_path)
+    if cloud_url:
+        notification.api.sending.sendFileByUrl(
+            notification.chat,
+            cloud_url,
+            local_path.name,
+            caption=caption,
+        )
+        return
+
+    # Fallback: direct upload (less reliable for large files)
+    logger.info(
+        "Falling back to direct upload for %s (%s bytes)",
+        local_path.name,
+        local_path.stat().st_size,
+    )
     notification.answer_with_file(
         str(local_path),
         file_name=local_path.name,
@@ -190,10 +307,13 @@ def _try_send_media(
     caption: str | None = None,
 ) -> bool:
     try:
-        _send_media(runtime, notification, ref, caption)
+        _send_media_with_retry(runtime, notification, ref, caption)
         return True
     except FileNotFoundError:
         logger.warning("Media file not found for %s: %s", notification.chat, ref)
+        return False
+    except Exception:
+        logger.exception("Failed to send media %s to %s after retries", ref, notification.chat)
         return False
 
 
