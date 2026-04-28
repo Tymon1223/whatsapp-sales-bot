@@ -38,6 +38,7 @@ class Settings:
     ignore_group_chats: bool
     google_apps_script_url: str
     catalog_refresh_seconds: int
+    media_public_base_url: str
     payment_kaspi_qr_url: str
     payment_kaspi_qr_file: str
     payment_transfer_number: str
@@ -83,6 +84,7 @@ def load_settings() -> Settings:
         ignore_group_chats=_get_bool("IGNORE_GROUP_CHATS", True),
         google_apps_script_url=required["GOOGLE_APPS_SCRIPT_URL"],
         catalog_refresh_seconds=_get_int("CATALOG_REFRESH_SECONDS", 60),
+        media_public_base_url=os.getenv("MEDIA_PUBLIC_BASE_URL", "").strip().rstrip("/"),
         payment_kaspi_qr_url=os.getenv("PAYMENT_KASPI_QR_URL", "").strip(),
         payment_kaspi_qr_file=os.getenv(
             "PAYMENT_KASPI_QR_FILE", "assets/payment/kaspi_qr.jpg"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from app.ai_service import RouterDecision
 from app.message_utils import (
@@ -104,6 +105,23 @@ def _resolve_local_media_path(runtime: BotRuntime, ref: str) -> Path | None:
     return None
 
 
+def _build_public_media_url(runtime: BotRuntime, ref: str) -> str:
+    if not runtime.settings.media_public_base_url:
+        return ""
+    if ref.startswith(("http://", "https://")):
+        return ref
+
+    normalized = ref.replace("\\", "/").lstrip("/")
+    if normalized.startswith("assets/payment/"):
+        return ""
+    for prefix in ("assets/products/", "assets/payment/", "assets/"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix) :]
+            break
+
+    return f"{runtime.settings.media_public_base_url}/{quote(normalized, safe='/')}"
+
+
 def _send_media(
     runtime: BotRuntime,
     notification: Any,
@@ -122,6 +140,25 @@ def _send_media(
         notification.api.sending.sendFileByUrl(
             notification.chat,
             ref,
+            file_name,
+            caption=caption,
+        )
+        return
+
+    public_url = _build_public_media_url(runtime, ref)
+    if public_url:
+        file_name = runtime.sales_flow.build_remote_file_name(public_url)
+        logger.info(
+            "Sending public media URL to %s: ref=%s url=%s file_name=%s caption_length=%s",
+            notification.chat,
+            ref,
+            public_url,
+            file_name,
+            len(caption or ""),
+        )
+        notification.api.sending.sendFileByUrl(
+            notification.chat,
+            public_url,
             file_name,
             caption=caption,
         )
