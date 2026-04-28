@@ -60,6 +60,7 @@ def _handle_universal_template(runtime: BotRuntime, notification: Any, incoming_
     if not media_sent:
         notification.answer(UNIVERSAL_SALES_TEXT)
         runtime.sales_flow.mark_discovering(notification.chat)
+
     runtime.ai_service.record_assistant_message(notification.chat, UNIVERSAL_SALES_TEXT)
     logger.info("Universal sales template sent to %s", notification.chat)
     return True
@@ -111,6 +112,13 @@ def _send_media(
 ) -> None:
     if ref.startswith(("http://", "https://")):
         file_name = runtime.sales_flow.build_remote_file_name(ref)
+        logger.info(
+            "Sending remote media to %s: ref=%s file_name=%s caption_length=%s",
+            notification.chat,
+            ref,
+            file_name,
+            len(caption or ""),
+        )
         notification.api.sending.sendFileByUrl(
             notification.chat,
             ref,
@@ -123,6 +131,14 @@ def _send_media(
     if not local_path:
         raise FileNotFoundError(f"Media file not found: {ref}")
 
+    logger.info(
+        "Sending local media to %s: path=%s file_name=%s size_bytes=%s caption_length=%s",
+        notification.chat,
+        local_path,
+        local_path.name,
+        local_path.stat().st_size,
+        len(caption or ""),
+    )
     notification.answer_with_file(
         str(local_path),
         file_name=local_path.name,
